@@ -3,6 +3,7 @@ import time
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import pandas as pd
 import requests
 import scipy.spatial as spt
 import vk_api
@@ -46,10 +47,10 @@ def get_friends_childs(user_ids: dict):
     return (parent_childs_ids, parent_ids)
 
 
-def __get_parent_friends_ids(vk_session, user_ids: list) -> dict:
-    if len(user_ids) > 25:
-        friends_1 = __get_parent_friends_ids(vk_session, user_ids[:25])
-        friends_2 = __get_parent_friends_ids(vk_session, user_ids[25:])
+def __get_parent_friends_ids(vk_session, user_ids: list, req_count: int=15) -> dict:
+    if len(user_ids) > req_count:
+        friends_1 = __get_parent_friends_ids(vk_session, user_ids[:req_count], req_count)
+        friends_2 = __get_parent_friends_ids(vk_session, user_ids[req_count:], req_count)
         friends = {}
         friends.update(friends_1)
         friends.update(friends_2)
@@ -93,7 +94,7 @@ def __get_parent_friends_ids(vk_session, user_ids: list) -> dict:
     return friends
 
 
-def get_friends_ids(vk_session, user_ids):
+def get_friends_ids(vk_session, user_ids, req_count: int=15):
     if type(user_ids) == int:
         user_ids = [user_ids]
     elif type(user_ids) == list and len(user_ids) != 0:
@@ -105,14 +106,14 @@ def get_friends_ids(vk_session, user_ids):
             raise f"Unexpected type: {type(user_ids[0])}"
     elif type(user_ids) == dict:
         parent_user_ids, parent_ids = get_friends_childs(user_ids)
-        values = [__get_parent_friends_ids(vk_session, user_ids) for user_ids in parent_user_ids]
+        values = [__get_parent_friends_ids(vk_session, user_ids, req_count) for user_ids in parent_user_ids]
         print(values)
         res = {}
         for k, v in zip(parent_ids, values):
             res[k] = {"count": len(v), "childs": v}
         return res
 
-    return __get_parent_friends_ids(vk_session, user_ids)
+    return __get_parent_friends_ids(vk_session, user_ids, req_count)
 
 
 def decompose_keys(friend: dict, key1: str, key2: list[str] = []):
@@ -175,31 +176,81 @@ def draw_graph(g, parameter, size_of_nodes, number):
         labels=node_labels,
     )
 
+def create_df_with_param(g, parameter: dict={}, parameter_name: str='parameter'):
+    df = pd.DataFrame(g.nodes.values())
+    df = df[df['id'].notna()]
+    df['id'] = df['id'].astype('int')
+    if len(parameter) != 0:
+        print(parameter)
+        df_degree = pd.DataFrame(parameter, columns=['id', parameter_name])
+        print(df_degree)
+        df = pd.merge(df, df_degree,how="left")
+        df = df.sort_values(parameter_name, ascending=False)
+        columns = ["id", "domain", "sex", "first_name", "last_name", "university_name", "city_title", parameter_name]
+        for i, col in enumerate(columns):
+            if col not in df.columns:
+                columns.pop(i)
+                print("Scipping: ", col)
+        df = df[columns]
+        df = df.set_index('id')
+    else:
+        df =df.set_index('id')
+    return df
 
-def show_graph(g, parameter, size_of_nodes):
+def get_node_labels(df: pd.DataFrame, number: int=-1):
+    node_labels = df[:number].T.to_dict('list')
+    node_labels = {k: f'{label[0]}_{label[1]}_{label[2]}' if type(label[2]) == str else f'{label[0]}_{label[1]}' for k, label in node_labels.items()}
+    return node_labels
+
+from matplotlib.lines import Line2D
+
+def show_graph(g, parameter: dict={}, size_of_nodes=1000, number=15, figsize=(40,25), parameter_name: str='parameter', save_file: str = '', show: bool=True):
     lespos = nx.kamada_kawai_layout(g)
-    labels = {k: v["domain"] if "domain" in v else k for k, v in g.nodes.items()}  # Creating labels with node IDs
+    sorted_df = create_df_with_param(g, parameter, parameter_name=parameter_name)
+    labels_df = sorted_df[['first_name', 'last_name', 'city_title']]
+    plt.figure(1, figsize=figsize)
+    if len(parameter) != 0:
+        node_labels = get_node_labels(labels_df, number)
+        nx.draw(
+            g,
+            pos=lespos,
+            node_size=[v * size_of_nodes for k, v in parameter],
+            node_color=[v for k, v in parameter],
+            font_size=25,
+            cmap=plt.cm.get_cmap("RdBu_r"),
+            labels=node_labels,
+        )
+        # nodes = nx.draw_networkx_nodes(
+        #     g,
+        #     lespos,
+        #     cmap=plt.cm.OrRd,
+        #     node_color=[v for k, v in parameter],
+        #     node_size=100,
+        #     edgecolors='black'
+        # )
+        # plt.legend(*nodes.legend_elements())
+        # legend_elements = [Line2D([0], [0], marker='o', color='w', label=label, markersize=10) 
+        #             for label in node_labels.keys()]
 
-    # Drawing nodes and edges
-    # plt.xkcd()
-    plt.figure(1, figsize=(30, 25))
-
-    # nx.draw_networkx_nodes(g, lespos, node_color='white', edgecolors='black', node_size=100)
-    # nx.draw_networkx_edges(g, lespos, alpha=0.3)
-    # nx.draw_networkx_labels(g, lespos, labels=labels, font_size=4)
-
-    nx.draw(
-        g,
-        pos=lespos,
-        node_size=[v * size_of_nodes for k, v in parameter],
-        node_color=[v for k, v in parameter],
-        font_size=4,
-        cmap=plt.cm.get_cmap("RdBu_r"),
-        labels=labels,
-    )
-    # nx.draw(g, lespos, with_labels=True, labels=labels, node_size=100, node_color='skyblue', font_size=8)
-    plt.title("Graph of Friends Connections")
-    plt.show()
+        # plt.legend(handles=legend_elements, title='Top Nodes', loc='upper right')
+    else:
+        node_labels = get_node_labels(labels_df)
+        nx.draw(
+                g,
+                pos=lespos,
+                node_color='white',
+                edgecolors='black',
+                node_size=size_of_nodes,
+                font_size=25,
+                # cmap=plt.cm.get_cmap("RdBu_r"),
+                labels=node_labels,
+            )
+    plt.title("Graph of Friends Connections", fontsize=40)
+    if save_file != '':
+        plt.savefig(save_file)
+    if show:
+        plt.show()
+    return sorted_df
 
 
 def print_full_name_for_id(id_interest):
@@ -262,9 +313,8 @@ def find_top_nodes(g, values, number):
     print(values)
     sorted_values = sorted(values, key=lambda x: x[1], reverse=True)
     print(sorted_values)
-    best = {i[0]: g.node[i[0]]["name"] for i in sorted_values[0:number]}
+    best = {i[0]: g.nodes[i[0]]["domain"] for i in sorted_values[0:number]}
     return best
-
 
 def get_sparse_matrix(graph):
     g_sparse = nx.utils.reverse_cuthill_mckee_ordering(graph)

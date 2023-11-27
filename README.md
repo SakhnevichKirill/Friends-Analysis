@@ -1,10 +1,9 @@
-# Social-Media-Analysis
+# Friends-Analysis
 ## Information
 
-Данный проект реализован в рамках дисциплины "Анализ и моделирование в социальных сетях" Университета ИТМО. Для анализа использовалась социальная сеть ВКонтакте.
+Данный проект реализован в рамках проектной работы "Анализ социальной сети" Университета ИТМО. Для анализа использовалась социальная сеть ВКонтакте.
 
-This project was implemented within the framework of the discipline "Analysis and modeling in social networks" of ITMO University. The social network VKontakte was used for the analysis.
-
+This project was implemented as part of the project work "Social Network Analysis" of ITMO University. The social network VKontakte was used for the analysis.
 ---
 
 ## Setup
